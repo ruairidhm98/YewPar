@@ -101,7 +101,7 @@ private:
 
   inline MetricsVec transformVec(const std::vector<std::atomic<std::uint64_t> > & vec) const {
     MetricsVec res;
-    std::transform(vec.begin(), vec.end(), std::back_inserter(res),
+    std::transform(vec.begin(), vec.begin()+newSize+1, std::back_inserter(res),
     [](const auto & c) { return c.load(); });
     return res;
   }
@@ -142,3 +142,32 @@ struct PrintTimesAct : hpx::actions::make_direct_action<
 
 }
 
+
+namespace hpx { namespace traits {
+
+template <>
+struct action_stacksize<YewPar::InitMetricStoreAct> {
+  enum { value = threads::thread_stacksize_huge };
+};
+
+template <>
+struct action_stacksize<YewPar::GetNodeCountAct> {
+  enum { value = threads::thread_stacksize_huge };
+};
+
+template <>
+struct action_stacksize<YewPar::GetBacktracksAct> {
+  enum { value = threads::thread_stacksize_huge };
+};
+
+template <>
+struct action_stacksize<YewPar::GetPrunesAct> {
+  enum { value = threads::thread_stacksize_huge };
+};
+
+template <>
+struct action_stacksize<YewPar::PrintTimesAct> {
+  enum { value = threads::thread_stacksize_huge };
+};
+
+}}

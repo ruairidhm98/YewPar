@@ -83,7 +83,8 @@ def draw_bucket_graph(times, title):
 
   data = []
   for time in times:
-    data.append(np.array(time, dtype=np.float64))
+    if len(time) > 0:
+      data.append(np.array(time, dtype=np.float64))
 
   fig, ax2 = plt.subplots(sharey=True)
   ax2.set_title(title)
@@ -116,7 +117,7 @@ def draw_bucket_graph(times, title):
   ax2.vlines(inds, whiskersMin, whiskersMax, color='k', linestyle='-', lw=1)
 
   # set style for the axes
-  labels = [0, 1, 2, 3, 4, 5, 6]
+  labels = [0, 1, 2]
   for ax in [ax2]:
       set_axis_style(ax, labels)
 
@@ -262,3 +263,5 @@ for i in range(6):
 
 draw_scaling_graph(medians, "Runtimes on MaxClique on brock800_1.clq", 2, 10000000, "Runtime (s)")
 draw_scaling_graph(speedUps, "Scaling on MaxClique on brock800_1.clq", 2, 10000000, "Relative SpeedUp (1 locality)")
+times, nodes, backtracks, sTimes, p = read_search_metrics("../b401_d.txt")
+draw_bucket_graph(times, "Runtime regularity on MaxClique brock400_1.clq, Depthbounded d = 2")
