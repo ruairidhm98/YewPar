@@ -47,38 +47,35 @@ int hpx_main(boost::program_options::variables_map & opts) {
   auto start_time = std::chrono::steady_clock::now();
 
   std::vector<std::uint64_t> counts;
-  if (skeleton == "seq") {
-    YewPar::Skeletons::API::Params<> searchParameters;
-    searchParameters.maxDepth = maxDepth;
-    counts = YewPar::Skeletons::Seq<NodeGen,
-                                    YewPar::Skeletons::API::CountNodes,
-                                    YewPar::Skeletons::API::DepthLimited>
-             ::search(Empty(), root, searchParameters);
-  } else if (skeleton == "depthbounded") {
+  if (skeleton == "depthbounded") {
     YewPar::Skeletons::API::Params<> searchParameters;
     searchParameters.maxDepth   = maxDepth;
     searchParameters.spawnDepth = spawnDepth;
-    if (opts.count("metrics")) {
-      counts = YewPar::Skeletons::DepthBounded<NodeGen,
-                                              YewPar::Skeletons::API::CountNodes,
-                                              YewPar::Skeletons::API::Metrics,
-                                              YewPar::Skeletons::API::DepthLimited>
-              ::search(Empty(), root, searchParameters);
-    } else {
-      counts = YewPar::Skeletons::DepthBounded<NodeGen,
+    counts = YewPar::Skeletons::DepthBounded<NodeGen,
                                               YewPar::Skeletons::API::CountNodes,
                                               YewPar::Skeletons::API::DepthLimited>
               ::search(Empty(), root, searchParameters);
-    }
   } else if (skeleton == "stacksteal"){
     YewPar::Skeletons::API::Params<> searchParameters;
     searchParameters.maxDepth = maxDepth;
     searchParameters.stealAll = static_cast<bool>(opts.count("chunked"));
-    
-    if (opts.count("metrics")) {
+    // EXTENSION
+    if (opts.count("nodes")) {
       counts = YewPar::Skeletons::StackStealing<NodeGen,
                                               YewPar::Skeletons::API::CountNodes,
-                                              YewPar::Skeletons::API::Metrics,
+                                              YewPar::Skeletons::API::NodeCounts,
+                                              YewPar::Skeletons::API::DepthLimited>
+              ::search(Empty(), root, searchParameters);
+    } else if (opts.count("backtracks")) {
+      counts = YewPar::Skeletons::StackStealing<NodeGen,
+                                              YewPar::Skeletons::API::CountNodes,
+                                              YewPar::Skeletons::API::Backtracks,
+                                              YewPar::Skeletons::API::DepthLimited>
+              ::search(Empty(), root, searchParameters);
+    } else if (opts.count("regularity")) {
+      counts = YewPar::Skeletons::StackStealing<NodeGen,
+                                              YewPar::Skeletons::API::CountNodes,
+                                              YewPar::Skeletons::API::Regularity,
                                               YewPar::Skeletons::API::DepthLimited>
               ::search(Empty(), root, searchParameters);
     } else {
@@ -87,14 +84,28 @@ int hpx_main(boost::program_options::variables_map & opts) {
                                               YewPar::Skeletons::API::DepthLimited>
               ::search(Empty(), root, searchParameters);
     }
+    // END EXTENSION
   } else if (skeleton == "budget"){
     YewPar::Skeletons::API::Params<> searchParameters;
     searchParameters.backtrackBudget = opts["backtrack-budget"].as<unsigned>();
     searchParameters.maxDepth   = maxDepth;
-    if (opts.count("metrics")) {
+    // EXTENSION
+    if (opts.count("nodes")) {
       counts = YewPar::Skeletons::Budget<NodeGen,
                                        YewPar::Skeletons::API::CountNodes,
-                                       YewPar::Skeletons::API::Metrics,
+                                       YewPar::Skeletons::API::NodeCounts,
+                                       YewPar::Skeletons::API::DepthLimited>
+        ::search(Empty(), root, searchParameters);
+    } else if (opts.count("backtracks")) {
+      counts = YewPar::Skeletons::Budget<NodeGen,
+                                       YewPar::Skeletons::API::CountNodes,
+                                       YewPar::Skeletons::API::Backtracks,
+                                       YewPar::Skeletons::API::DepthLimited>
+        ::search(Empty(), root, searchParameters);
+    } else if (opts.count("regularity")) {
+      counts = YewPar::Skeletons::Budget<NodeGen,
+                                       YewPar::Skeletons::API::CountNodes,
+                                       YewPar::Skeletons::API::Regularity,
                                        YewPar::Skeletons::API::DepthLimited>
         ::search(Empty(), root, searchParameters);
     } else {
@@ -103,6 +114,7 @@ int hpx_main(boost::program_options::variables_map & opts) {
                                        YewPar::Skeletons::API::DepthLimited>
         ::search(Empty(), root, searchParameters);
     }
+    // END EXTENSION
   } else {
     hpx::cout << "Invalid skeleton type: " << skeleton << hpx::endl;
     return hpx::finalize();
@@ -147,8 +159,11 @@ int main(int argc, char* argv[]) {
       "Enable verbose output"
     )
     ("chunked", "Use chunking with stack stealing")
-    ("scaling", "Collect scaling and node throughput")
-    ("metrics", "Collect regularity, backtracks");
+    // EXTENSION
+    ("backtracks", "Collect the backtracks metric")
+    ("nodes", "Collect the backtracks metric")
+    ("regularity", "Collect the backtracks metric");
+    // END EXTENSION
 
   YewPar::registerPerformanceCounters();
 

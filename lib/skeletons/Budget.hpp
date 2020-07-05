@@ -26,12 +26,21 @@ struct Budget {
   static constexpr bool isDepthBounded = parameter::value_type<args, API::tag::DepthLimited_, std::integral_constant<bool, false> >::type::value;
   static constexpr bool pruneLevel = parameter::value_type<args, API::tag::PruneLevel_, std::integral_constant<bool, false> >::type::value;
   static constexpr unsigned maxStackDepth = parameter::value_type<args, API::tag::MaxStackDepth, std::integral_constant<unsigned, 5000> >::type::value;
-
+ 
   typedef typename parameter::value_type<args, API::tag::Verbose_, std::integral_constant<unsigned, 0> >::type Verbose;
   static constexpr unsigned verbose = Verbose::value;
+  
+  // EXTENSION
+  typedef typename parameter::value_type<args, API::tag::NodeCounts_, std::integral_constant<unsigned, 0> >::type NodeCounts;
+  static constexpr unsigned nodeCounts = NodeCounts::value;
 
-  typedef typename parameter::value_type<args, API::tag::Metrics_, std::integral_constant<unsigned, 0> >::type Metrics_;
-  static constexpr unsigned metrics = Metrics_::value;
+  // EXTENSION
+  typedef typename parameter::value_type<args, API::tag::Regularity_, std::integral_constant<unsigned, 0> >::type Regularity;
+  static constexpr unsigned regularity = Regularity::value;
+
+  // EXTENSION
+  typedef typename parameter::value_type<args, API::tag::Backtracks_, std::integral_constant<unsigned, 0> >::type Backtracks;
+  static constexpr unsigned countBacktracks = Backtracks::value;
 
   typedef typename parameter::value_type<args, API::tag::BoundFunction, nullFn__>::type boundFn;
   typedef typename boundFn::return_type Bound;
@@ -103,9 +112,11 @@ struct Budget {
             }
           }
         }
-				if constexpr (metrics) {
-					totalBacktracks += backtracks;
-				}
+        // EXTENSION
+        if constexpr(countBacktracks) {
+          totalBacktracks += backtracks;
+        }
+        // END EXTENSION
         backtracks = 0;
       }
 
@@ -118,17 +129,14 @@ struct Budget {
 
         auto pn = ProcessNode<Space, Node, Args...>::processNode(params, space, child);
         
-        if constexpr(metrics) {
-          ++nodeCount;
+        // EXTENSION
+        if constexpr(nodeCounts) {
+          nodeCount++;
         }
+        // END EXTENSION
 
         if (pn == ProcessNodeRet::Exit) { return; }
-        else if (pn == ProcessNodeRet::Prune) {
-          if constexpr(isOptimisation && metrics) {
-            ++prunes;
-          }
-          continue;
-        }
+        else if (pn == ProcessNodeRet::Prune) { continue; }
         else if (pn == ProcessNodeRet::Break) {
           stackDepth--;
           depth--;
@@ -164,10 +172,12 @@ struct Budget {
         backtracks++;
       }
     }
-
-    if constexpr(metrics) {
+    // EXTENSION
+    if constexpr(countBacktracks) {
       totalBacktracks += backtracks;
     }
+    // END EXTENSION
+
   }
 
   static void subtreeTask(const Node taskRoot,
@@ -183,27 +193,36 @@ struct Budget {
     }
 
     std::vector<hpx::future<void> > childFutures;
-    std::uint64_t nodeCount = 0, prunes = 0, backtracks = 0;
+    std::uint64_t nodeCount, prunes, backtracks;
 
+    // EXTENSION
     std::chrono::time_point<std::chrono::steady_clock> t1;
     
-    if constexpr(metrics) {
+    if constexpr(regularity) {
       t1 = std::chrono::steady_clock::now();
     }
+    // END EXTENSION
     
     expand(reg->space, taskRoot, reg->params, countMap, childFutures, childDepth, nodeCount, prunes, backtracks);
 
-    if constexpr(metrics) {
-      auto t2 = std::chrono::steady_clock::now();
-      auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);      
-     	const std::uint64_t time = (const std::uint64_t) diff.count();
-      hpx::apply(hpx::util::bind([=]() {
-        store->updatePrunes(childDepth, prunes);
-        store->updateTimes(childDepth, time);
-        store->updateNodesVisited(childDepth, nodeCount);
-        store->updateBacktracks(childDepth, backtracks);
-      }));
+    // EXTENSION
+    if constexpr(nodeCounts) {
+      store->updateNodesVisited(childDepth, nodeCount);
     }
+
+    if constexpr(countBacktracks) {
+      store->updateBacktracks(childDepth, backtracks);
+    }
+
+    if constexpr (regularity) {
+      auto t2 = std::chrono::steady_clock::now();
+      auto diff = t2-t1;
+      const auto time = (const std::uint64_t) diff.count();
+      hpx::apply(hpx::util::bind([=]() {
+        store->updateTimes(childDepth, time);
+      }));
+   }
+   // END EXTENSION
 
     // Atomically updates the (process) local counter
     if constexpr (isCountNodes) {
@@ -247,9 +266,11 @@ struct Budget {
     hpx::wait_all(hpx::lcos::broadcast<InitRegistryAct<Space, Node, Bound> >(
         hpx::find_all_localities(), space, root, params));
 
-    if constexpr(metrics) {
+    // EXTENSION
+    if constexpr(nodeCounts || countBacktracks || regularity) {
       hpx::wait_all(hpx::lcos::broadcast<InitMetricStoreAct>(hpx::find_all_localities()));
     }
+    // END EXTENSION
 
     Policy::initPolicy();
 
@@ -263,32 +284,41 @@ struct Budget {
           hpx::find_all_localities(), inc));
       initIncumbent<Space, Node, Bound, Objcmp, Verbose>(root, params.initialBound);
     }
-  
+
+    // EXTENSION
     std::chrono::time_point<std::chrono::steady_clock> t1;
-    if constexpr(metrics) {
+    if constexpr(nodeCounts || countBacktracks) {
       t1 = std::chrono::steady_clock::now();
     }
+    // END EXTENSION
 
     createTask(1, root).get();
 
     hpx::wait_all(hpx::lcos::broadcast<Workstealing::Scheduler::stopSchedulers_act>(
         hpx::find_all_localities()));
 
-    if constexpr(metrics) {
+    // EXTENSION
+    if constexpr(regularity) {
+      printTotalTasks();
+      for (const auto & l : hpx::find_all_localities()) {
+        hpx::async<PrintTimesAct>(l).get();
+      }
+    }
+
+    if constexpr(nodeCounts || countBacktracks) {
       auto t2 = std::chrono::steady_clock::now();
       auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
       const std::uint64_t time = diff.count();
       hpx::cout << "CPU Time (Before collecting metrics) " << time << hpx::endl;
-
-      // Prints regularity metrics
-      for (const auto & l : hpx::find_all_localities()) {
-        hpx::async<PrintTimesAct>(l).get();
+      if constexpr(nodeCounts) {
+        printNodeCounts();
       }
-      printPrunes();
-      printBacktracks();
-      printNodeCounts();
+      if constexpr(countBacktracks) {
+        printBacktracks();
+      }
     }
-    
+    // END EXTENSION
+
     // Return the right thing
     if constexpr(isCountNodes) {
       return totalNodeCounts<Space, Node, Bound>(params.maxDepth);

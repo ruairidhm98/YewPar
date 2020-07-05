@@ -4,6 +4,7 @@
 #include <atomic>
 #include <algorithm>
 #include <memory>
+#include <numeric>
 #include <forward_list>
 #include <vector>
 
@@ -17,14 +18,15 @@ namespace YewPar {
 struct MetricStore {
   static MetricStore* store;
 
-  using MetricsVecPtr = std::unique_ptr<std::vector<std::atomic<std::uint64_t> > >;
+  using MetricsVecPtr = std::unique_ptr<std::vector<std::atomic<std::uint64_t>> >;
   using MetricsVecAtomic = std::vector<std::atomic<std::uint64_t> >;
   using MetricsVec = std::vector<std::uint64_t>;
-  using TimesVecPtr = std::unique_ptr<std::vector<std::list<std::uint64_t> > >;
-  using TimesVec = std::vector<std::list<std::uint64_t> >;
+  using TimesVecPtr = std::unique_ptr<std::vector<std::forward_list<std::uint64_t> > >;
+  using TimesVec = std::vector<std::forward_list<std::uint64_t> >;
 
   // Regularity Metrics
   TimesVecPtr taskTimes;
+	MetricsVecPtr tasks;	
 
   // For node throughput
   MetricsVecPtr nodesVisited;
@@ -35,38 +37,45 @@ struct MetricStore {
   // Counting pruning
   MetricsVecPtr prunes;
 	
-	static const unsigned DEF_SIZE = 50;
-	static const unsigned TIME_DEPTHS = 8;
+	static const unsigned DEF_SIZE = 100;
 
   MetricStore() = default;
 
   void init() {
-    taskTimes = std::make_unique<TimesVec>(TIME_DEPTHS);
-    prunes = std::make_unique<MetricsVecAtomic>(DEF_SIZE);
+    taskTimes = std::make_unique<TimesVec>(DEF_SIZE);
     backtracks = std::make_unique<MetricsVecAtomic>(DEF_SIZE);
 		nodesVisited = std::make_unique<MetricsVecAtomic>(DEF_SIZE);
+		tasks = std::make_unique<MetricsVecAtomic>(DEF_SIZE);
   }
 
-  void updateTimes(const unsigned depth, const std::uint64_t time) {
+  /* For conveniance */
+  void updateMetrics(const unsigned depth, const std::uint64_t t, 
+                     const std::uint64_t p, const std::uint64_t n,
+                     const std::uint64_t b) {
+    updateTimes(depth, t);
+    updatePrunes(depth, p);
+    updateNodesVisited(depth, n);
+    updateBacktracks(depth, b);
+  }
+
+  void updateTimes(const unsigned depth, std::uint64_t time) {
 		if (time >= 1) {
-        const auto depthIdx = getDepthIndex(depth, TIME_DEPTHS);
-        (*taskTimes)[depthIdx].push_front(time);
-   	 	}
+			const auto depthIdx = depth < DEF_SIZE ? depth : DEF_SIZE-1;
+      (*taskTimes)[depthIdx].push_front(time);
+			(*tasks)[depthIdx]++;
+   	}
   }
 
   void updatePrunes(const unsigned depth, std::uint64_t p) {
-    const auto depthIdx = getDepthIndex(depth, prunes->size());
-    (*prunes)[depthIdx] += p;
+    updateMetric(*prunes, p, depth);
   }
 
-  void updateNodesVisited(const unsigned depth, std::uint64_t nodes) {
-    const auto depthIdx = getDepthIndex(depth, nodesVisited->size());
-    (*nodesVisited)[depthIdx] += nodes;
+  void updateNodesVisited(const unsigned depth, std::uint64_t n) {
+    updateMetric(*nodesVisited, n, depth);
   }
 
   void updateBacktracks(const unsigned depth, std::uint64_t b) {
-    const auto depthIdx = getDepthIndex(depth, backtracks->size());
-    (*backtracks)[depthIdx] += b;
+    updateMetric(*backtracks, b, depth);
   }
 
   MetricsVec getNodeCount() const {
@@ -81,12 +90,18 @@ struct MetricStore {
     return transformVec(*prunes);
   }
 
+  MetricsVec getTotalTasks () const {
+		return transformVec(*tasks);
+  }
+
 	void printTimes() {
     auto depth = 0;
 		for (const auto & timeDepths : *taskTimes) {
       for (const auto & time : timeDepths) {
-			  hpx::cout << "Depth :" << depth << " Time :" << time << hpx::endl;
-      }
+			  if (time >= 1) {
+					hpx::cout << "Depth :" << depth << " Time :" << time << hpx::endl;
+      	}
+			}
       depth++;
 		}
 	}
@@ -95,13 +110,14 @@ struct MetricStore {
 
 private:
 
-  inline unsigned getDepthIndex(const unsigned depth, const unsigned size) const {
-    return (depth >= size) ? (size-1) : depth;
+  inline void updateMetric(MetricsVecAtomic & ms, const std::uint64_t & m, const unsigned depth) {
+		auto depthIdx = depth < DEF_SIZE ? depth : DEF_SIZE-1;
+    ms[depthIdx] += m;
   }
 
-  inline MetricsVec transformVec(const std::vector<std::atomic<std::uint64_t> > & vec) const {
+  inline MetricsVec transformVec(const MetricsVecAtomic & vec) const {
     MetricsVec res;
-    std::transform(vec.begin(), vec.begin()+newSize+1, std::back_inserter(res),
+    std::transform(vec.begin(), vec.end(), std::back_inserter(res),
     [](const auto & c) { return c.load(); });
     return res;
   }
@@ -128,17 +144,17 @@ std::vector<std::uint64_t> getBacktracks() {
 struct GetBacktracksAct : hpx::actions::make_direct_action<
   decltype(&getBacktracks), &getBacktracks, GetBacktracksAct>::type {};
 
-std::vector<std::uint64_t> getPrunes() {
-  return MetricStore::store->getPrunes();
-}
-struct GetPrunesAct : hpx::actions::make_direct_action<
-  decltype(&getPrunes), &getPrunes, GetPrunesAct>::type {};
-
 void printTimes() {
 	MetricStore::store->printTimes();
 }
 struct PrintTimesAct : hpx::actions::make_direct_action<
 	decltype(&printTimes), &printTimes, PrintTimesAct>::type {};
+
+std::vector<std::uint64_t> getTotalTasks() {
+  return MetricStore::store->getTotalTasks();
+}
+struct GetTotalTasksAct : hpx::actions::make_direct_action<
+  decltype(&getTotalTasks), &getTotalTasks, GetTotalTasksAct>::type {};
 
 }
 
@@ -161,12 +177,12 @@ struct action_stacksize<YewPar::GetBacktracksAct> {
 };
 
 template <>
-struct action_stacksize<YewPar::GetPrunesAct> {
+struct action_stacksize<YewPar::PrintTimesAct> {
   enum { value = threads::thread_stacksize_huge };
 };
 
 template <>
-struct action_stacksize<YewPar::PrintTimesAct> {
+struct action_stacksize<YewPar::GetTotalTasksAct> {
   enum { value = threads::thread_stacksize_huge };
 };
 

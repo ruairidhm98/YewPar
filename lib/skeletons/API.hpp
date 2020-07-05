@@ -48,9 +48,18 @@ struct MoreVerbose : Verbose_<std::integral_constant<unsigned, 2> > {};
 // Basic Info + Updates + Parallelism information
 struct EvenMoreVerbose : Verbose_<std::integral_constant<unsigned, 3> > {};
 
-// Get Metrics for Dissertation
-BOOST_PARAMETER_TEMPLATE_KEYWORD(Metrics_)
-struct Metrics : Metrics_<std::integral_constant<unsigned, 1> > {};
+// EXTENSION, flag for node throughput
+BOOST_PARAMETER_TEMPLATE_KEYWORD(NodeCounts_)
+struct NodeCounts : NodeCounts_<std::integral_constant<unsigned, 1> > {};
+
+// EXTENSION, flag for search task runtime regularity
+BOOST_PARAMETER_TEMPLATE_KEYWORD(Regularity_)
+struct Regularity : Regularity_<std::integral_constant<unsigned, 1> > {};
+
+// EXTENSION, flag for BSW
+BOOST_PARAMETER_TEMPLATE_KEYWORD(Backtracks_)
+struct Backtracks : Backtracks_<std::integral_constant<unsigned, 1> > {};
+
 
 // Signature, everything is optional since the generators are explicitly passed as arg 1 on each skeleton
 BOOST_PARAMETER_TEMPLATE_KEYWORD(null)
