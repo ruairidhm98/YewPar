@@ -216,8 +216,8 @@ struct Budget {
 
     if constexpr (regularity) {
       auto t2 = std::chrono::steady_clock::now();
-      auto diff = t2-t1;
-      const auto time = (const std::uint64_t) diff.count();
+      auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1);
+      const std::uint64_t time =  diff.count();
       hpx::apply(hpx::util::bind([=]() {
         store->updateTimes(childDepth, time);
       }));
